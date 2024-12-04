@@ -1,8 +1,10 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Builder;
+using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
+using OctoshiftCLI;
 using OctoshiftCLI.Extensions;
 using OctoshiftCLI.Services;
 
@@ -36,13 +38,19 @@ namespace OctoshiftCli.GlToGithub
                 }, 1)
                 .Build();
 
-            // TODO: set context like bbs2gh?
+            SetContext(new InvocationContext(parser.Parse(args)));
             
             // TODO: implement statusCheck
             
             // TODO: implement latestversionCheck
 
             await parser.InvokeAsync(args);
+        }
+
+        private static void SetContext(InvocationContext invocationContext)
+        {
+            CliContext.RootCommand = "gl2gh";
+            CliContext.ExecutingCommand = invocationContext.ParseResult.CommandResult.Command.Name;
         }
     }
 }
