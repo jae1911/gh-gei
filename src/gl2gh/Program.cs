@@ -49,8 +49,16 @@ namespace OctoshiftCli.GlToGithub
                 Logger.LogWarning("Could not check GitHub availability from githubstatus.com. See See https://www.githubstatus.com for details.");
                 Logger.LogVerbose(e.ToString());
             }
-            
-            // TODO: implement latestversionCheck
+
+            try
+            {
+                await LatestVersionCheck(serviceProvider);
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Could not retreive latest gl2gh version from github.com, please ensure you are using the latest version by running: gh extension upgrade gl2gh.");
+                Logger.LogVerbose(e.ToString());
+            }
 
             await parser.InvokeAsync(args);
         }
@@ -76,6 +84,29 @@ namespace OctoshiftCli.GlToGithub
             if (await githubStatusApi.GetUnresolvedIncidentsCount() > 0)
             {
                 Logger.LogWarning("GitHub is currently experiencing availability issues. See https://www.githubstatus.com for details.");
+            }
+        }
+
+        private static async Task LatestVersionCheck(ServiceProvider serviceProvider)
+        {
+            var envProvider = serviceProvider.GetRequiredService<EnvironmentVariableProvider>();
+
+            if (envProvider.SkipVersionCheck().ToUpperInvariant() is "TRUE" or "1")
+            {
+                Logger.LogInformation("Skipped latest version check due to GEI_SKIP_VERSION_CHECK environment variable");
+                return;
+            }
+            
+            var versionChecker = serviceProvider.GetRequiredService<VersionChecker>();
+
+            if (await versionChecker.IsLatest())
+            {
+                Logger.LogInformation($"You are using an up-to-date version of the gl2gh extension [v{versionChecker.GetCurrentVersion()}]");
+            }
+            else
+            {
+                Logger.LogWarning($"You are running an old version of the gl2gh extension [v{versionChecker.GetCurrentVersion()}]. The latest version is v{versionChecker.GetLatestVersion()}.");
+                Logger.LogWarning("Please update by running: gh extension upgrade gl2gh");
             }
         }
     }
