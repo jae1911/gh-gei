@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using OctoshiftCLI;
 using OctoshiftCLI.Extensions;
+using OctoshiftCLI.Factories;
 using OctoshiftCLI.Services;
 
 [assembly: InternalsVisibleTo("OctoshiftCli.Tests")]
@@ -22,23 +23,29 @@ namespace OctoshiftCli.GlToGithub
 
             var serviceCollection = new ServiceCollection();
             serviceCollection
-                .AddSingleton(Logger);
+                .AddSingleton(Logger)
+                .AddSingleton<EnvironmentVariableProvider>()
+                .AddSingleton<RetryPolicy>()
+                .AddSingleton<GithubStatusApi>()
+                .AddSingleton<VersionChecker>()
+                .AddSingleton<BasicHttpClient>()
+                .AddSingleton<HttpDownloadServiceFactory>()
+                .AddSingleton<FileSystemProvider>()
+                .AddSingleton<DateTimeProvider>()
+                .AddSingleton<ConfirmationService>()
+                .AddHttpClient("NoSSL")
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+                {
+                    CheckCertificateRevocationList = false,
+                    ServerCertificateCustomValidationCallback = delegate { return true; }
+                })
+                .Services
+                .AddHttpClient("Default");
             
             var serviceProvider = serviceCollection.BuildServiceProvider();
-            var rootCommand = new RootCommand("Automated end-to-end GitLab to GitHub migrations.")
-                .AddCommands(serviceProvider);
+            var parser = BuildParser(serviceProvider);
 
-            var commandLineBuilder = new CommandLineBuilder(rootCommand);
-            var parser = commandLineBuilder
-                .UseDefaults()
-                .UseExceptionHandler((ex, _) =>
-                {
-                    Logger.LogError(ex);
-                    Environment.ExitCode = 1;
-                }, 1)
-                .Build();
-
-            SetContext(new InvocationContext(parser.Parse(args)));
+            SetContext(parser.Parse(args));
 
             try
             {
@@ -63,10 +70,10 @@ namespace OctoshiftCli.GlToGithub
             await parser.InvokeAsync(args);
         }
 
-        private static void SetContext(InvocationContext invocationContext)
+        private static void SetContext(ParseResult parseResult)
         {
             CliContext.RootCommand = "gl2gh";
-            CliContext.ExecutingCommand = invocationContext.ParseResult.CommandResult.Command.Name;
+            CliContext.ExecutingCommand = parseResult.CommandResult.Command.Name;
         }
 
         private static async Task GithubStatusCheck(ServiceProvider serviceProvider)
@@ -108,6 +115,22 @@ namespace OctoshiftCli.GlToGithub
                 Logger.LogWarning($"You are running an old version of the gl2gh extension [v{versionChecker.GetCurrentVersion()}]. The latest version is v{versionChecker.GetLatestVersion()}.");
                 Logger.LogWarning("Please update by running: gh extension upgrade gl2gh");
             }
+        }
+
+        private static Parser BuildParser(ServiceProvider serviceProvider)
+        {
+            var root = new RootCommand("CLI for GitLab importer.")
+                .AddCommands(serviceProvider);
+            var commandLineBuilder = new CommandLineBuilder(root);
+            
+            return commandLineBuilder
+                .UseDefaults()
+                .UseExceptionHandler((ex, _) =>
+                {
+                    Logger.LogError(ex);
+                    Environment.ExitCode = 1;
+                }, 1)
+                .Build();
         }
     }
 }
