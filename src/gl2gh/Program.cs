@@ -39,8 +39,16 @@ namespace OctoshiftCli.GlToGithub
                 .Build();
 
             SetContext(new InvocationContext(parser.Parse(args)));
-            
-            // TODO: implement statusCheck
+
+            try
+            {
+                await GithubStatusCheck(serviceProvider);
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Could not check GitHub availability from githubstatus.com. See See https://www.githubstatus.com for details.");
+                Logger.LogVerbose(e.ToString());
+            }
             
             // TODO: implement latestversionCheck
 
@@ -51,6 +59,24 @@ namespace OctoshiftCli.GlToGithub
         {
             CliContext.RootCommand = "gl2gh";
             CliContext.ExecutingCommand = invocationContext.ParseResult.CommandResult.Command.Name;
+        }
+
+        private static async Task GithubStatusCheck(ServiceProvider serviceProvider)
+        {
+            var envProvider = serviceProvider.GetRequiredService<EnvironmentVariableProvider>();
+
+            if (envProvider.SkipStatusCheck().ToUpperInvariant() is "TRUE" or "1")
+            {
+                Logger.LogInformation("Skipped GitHub status check due to GEI_SKIP_STATUS_CHECK environment variable");
+                return;
+            }
+            
+            var githubStatusApi = serviceProvider.GetRequiredService<GithubStatusApi>();
+
+            if (await githubStatusApi.GetUnresolvedIncidentsCount() > 0)
+            {
+                Logger.LogWarning("GitHub is currently experiencing availability issues. See https://www.githubstatus.com for details.");
+            }
         }
     }
 }
