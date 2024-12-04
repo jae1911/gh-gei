@@ -2,7 +2,10 @@ using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Threading.Tasks;
+using Amazon.Runtime.Internal.Endpoints.StandardLibrary;
 using OctoshiftCLI.Contracts;
+using OctoshiftCLI.Extensions;
 
 namespace OctoshiftCLI.Services;
 
@@ -40,4 +43,34 @@ public class GlClient
             }
         }
     }
+
+    public virtual async Task<string> GetAsync(string url) => await _retryPolicy.Retry(async () => await SendAsync(HttpMethod.Get, url));
+    
+    public virtual async Task<string> PostAsync(string url, object body) => await SendAsync(HttpMethod.Post, url, body);
+
+    private async Task<string> SendAsync(HttpMethod method, string url, object body = null)
+    {
+        _octoLogger.LogVerbose($"HTTP {method}: {url}");
+
+        if (body != null)
+        {
+            _octoLogger.LogVerbose($"HTTP BODY: {body.ToJson()}");
+        }
+        
+        using var payload = body?.ToJson().ToStringContent();
+        var response = method.ToString() switch
+        {
+            "GET" => await _httpClient.GetAsync(url),
+            "POST" => await _httpClient.PostAsync(url, payload),
+            _ => throw new ArgumentOutOfRangeException($"{method} is not supported")
+        };
+        
+        var content = await response.Content.ReadAsStringAsync();
+        _octoLogger.LogVerbose($"RESPONSE ({response.StatusCode}): {content}");
+        
+        response.EnsureSuccessStatusCode();
+
+        return content;
+    }
+    
 }
